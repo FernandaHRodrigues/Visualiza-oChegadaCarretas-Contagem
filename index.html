@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logística - Análise de Horários e Pico</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
+        <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-900">Logística | Picos e Horários</h1>
+                <p class="text-slate-500 mt-1">Descubra os horários de maior gargalo e a média semanal de chegadas</p>
+            </div>
+            
+            <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center">
+                <input type="file" id="fileUpload" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+            </div>
+        </header>
+
+        <div id="errorMessage" class="hidden mb-6 p-4 text-sm text-red-700 bg-red-100 rounded-lg border border-red-200">
+            <span class="font-bold">Erro na leitura:</span> <span id="errorText"></span>
+        </div>
+
+        <div id="emptyState" class="bg-white p-12 rounded-xl shadow-sm border border-slate-100 text-center mb-8">
+            <svg class="mx-auto h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-semibold text-slate-900">Aguardando a Planilha</h3>
+            <p class="mt-1 text-sm text-slate-500">Selecione seu arquivo Excel ou CSV para calcular as médias semanais de horário.</p>
+        </div>
+
+        <div id="mainDashboard" class="hidden">
+            
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col sm:flex-row justify-between gap-4 items-center">
+                <div class="flex items-center gap-4 w-full sm:w-auto">
+                    <span class="text-sm font-bold text-slate-700 uppercase tracking-wider">Filtro:</span>
+                    <select id="monthFilter" onchange="applyFilters()" class="w-full sm:w-56 bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5">
+                        <option value="ALL">Todos os Meses</option>
+                        <option value="01">Janeiro</option>
+                        <option value="02">Fevereiro</option>
+                        <option value="03">Março</option>
+                        <option value="04">Abril</option>
+                        <option value="05">Maio</option>
+                        <option value="06">Junho</option>
+                        <option value="07">Julho</option>
+                        <option value="08">Agosto</option>
+                        <option value="09">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                    </select>
+                </div>
+                <div id="yearTabs" class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 w-full sm:w-auto overflow-x-auto"></div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-slate-400 flex flex-col">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Analisado</span>
+                    <span id="kpi-total" class="text-3xl font-extrabold text-slate-800 mt-2">0</span>
+                    <span class="text-xs text-slate-400 mt-2">Carretas no período</span>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-red-500 flex flex-col">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Horário de Pico</span>
+                    <span id="kpi-peak-hour" class="text-3xl font-extrabold text-slate-800 mt-2">00h - 00h</span>
+                    <span class="text-xs text-slate-400 mt-2">Maior gargalo do dia</span>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-amber-500 flex flex-col">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Média no Pico (Por Semana)</span>
+                    <span id="kpi-peak-avg" class="text-3xl font-extrabold text-slate-800 mt-2">0</span>
+                    <span class="text-xs text-slate-400 mt-2">Carretas chegando na mesma hora</span>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 border-l-4 border-l-blue-500 flex flex-col">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dia Mais Movimentado</span>
+                    <span id="kpi-peak-day" class="text-3xl font-extrabold text-slate-800 mt-2">-</span>
+                    <span class="text-xs text-slate-400 mt-2">Dia da semana com mais chegadas</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <div class="mb-4">
+                        <h2 class="text-lg font-bold text-slate-800">Média de Chegadas por Hora</h2>
+                        <p class="text-sm text-slate-500">Visão Semanal: Quantas chegam, em média, em cada horário</p>
+                    </div>
+                    <div class="relative h-80"><canvas id="hourlyChart"></canvas></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <div class="mb-4">
+                        <h2 class="text-lg font-bold text-slate-800">Média de Chegadas por Dia da Semana</h2>
+                        <p class="text-sm text-slate-500">Visão Semanal: Volume médio distribuído nos dias</p>
+                    </div>
+                    <div class="relative h-80"><canvas id="weeklyChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let fullData = []; 
+        let availableYears = [];
+        let currentYear = "";
+        let hourlyChart, weeklyChart;
+        const weekDaysNames = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+        function showError(msg) {
+            document.getElementById('errorText').textContent = msg;
+            document.getElementById('errorMessage').classList.remove('hidden');
+            document.getElementById('mainDashboard').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+        }
+
+        document.getElementById('fileUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('errorMessage').classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    
+                    // Lemos a planilha duas vezes: uma para formato texto e outra para pegar os números brutos do excel (para datas/horas)
+                    const rowsRaw = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {header: 1, raw: true});
+                    const rowsFmt = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {header: 1, raw: false, defval: ""});
+                    
+                    processData(rowsRaw, rowsFmt);
+                } catch (error) {
+                    showError("Erro na leitura do arquivo. " + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function processData(rowsRaw, rowsFmt) {
+            if (!rowsRaw || rowsRaw.length < 2) return showError("O arquivo está vazio.");
+            fullData = [];
+
+            // Acha qual a primeira coluna de Data verificando os cabeçalhos
+            let dateColIndex = 0;
+            for (let c = 0; c < rowsFmt[0].length; c++) {
+                let header = String(rowsFmt[0][c]).toLowerCase();
+                if (header.includes('chegada') || header.includes('data')) {
+                    dateColIndex = c; break;
+                }
+            }
+
+            for (let i = 1; i < rowsRaw.length; i++) {
+                let rowRaw = rowsRaw[i];
+                let rowFmt = rowsFmt[i];
+                if (!rowRaw || rowRaw[dateColIndex] === undefined) continue;
+
+                let parsed = parseExcelDateAndHour(rowRaw, rowFmt, dateColIndex);
+                if (parsed) {
+                    // Calcula o dia da semana (0=Dom, 1=Seg, etc)
+                    let d = new Date(Date.UTC(parseInt(parsed.year), parseInt(parsed.month) - 1, parseInt(parsed.day)));
+                    parsed.weekDay = d.getUTCDay();
+                    parsed.dateStr = `${parsed.year}-${parsed.month}-${parsed.day}`;
+                    fullData.push(parsed);
+                }
+            }
+
+            if (fullData.length === 0) return showError("Não achamos colunas com data e hora válidas na planilha.");
+
+            availableYears = [...new Set(fullData.map(d => d.year))].sort();
+            currentYear = availableYears[availableYears.length - 1];
+
+            buildYearTabs();
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('mainDashboard').classList.remove('hidden');
+
+            if (!hourlyChart) initCharts(); 
+            applyFilters(); 
+        }
+
+        // Motor inteligente de extração de Data e Hora
+        function parseExcelDateAndHour(rowRaw, rowFmt, dateColIndex) {
+            let valRaw = rowRaw[dateColIndex];
+            let valFmt = rowFmt[dateColIndex];
+            let year, month, day, hour = -1;
+
+            // Se for número no Excel (Serial Date)
+            if (typeof valRaw === 'number') {
+                let epoch = new Date(Date.UTC(1899, 11, 30));
+                let jsDate = new Date(epoch.getTime() + Math.floor(valRaw) * 86400000);
+                year = String(jsDate.getUTCFullYear());
+                month = String(jsDate.getUTCMonth() + 1).padStart(2, '0');
+                day = String(jsDate.getUTCDate()).padStart(2, '0');
+                
+                let fraction = valRaw - Math.floor(valRaw);
+                if (fraction > 0) hour = Math.floor(fraction * 24);
+            } else {
+                // Se for String DD/MM/AAAA ou AAAA-MM-DD
+                let str = String(valFmt || valRaw).trim();
+                let dMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/); // Padrão BR
+                if (dMatch) {
+                    day = dMatch[1]; month = dMatch[2]; year = dMatch[3];
+                } else {
+                    dMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/); // Padrão BD
+                    if (dMatch) {
+                        year = dMatch[1]; month = dMatch[2]; day = dMatch[3];
+                    }
+                }
+                if (year && month && day) {
+                    let tMatch = str.match(/(\d{1,2}):(\d{2})/); // Tenta achar a hora na mesma string
+                    if (tMatch) hour = parseInt(tMatch[1], 10);
+                }
+            }
+
+            if (year && month && day) {
+                // Se a hora não estava na coluna de data, caça nas outras colunas
+                if (hour === -1) {
+                    for(let c = 0; c < rowFmt.length; c++) {
+                        if (c === dateColIndex) continue;
+                        
+                        let cellRaw = rowRaw[c];
+                        let cellFmt = String(rowFmt[c] || '').trim();
+                        
+                        // Fração de tempo do Excel (ex: 0.8333 para 20:00)
+                        if (typeof cellRaw === 'number' && cellRaw > 0 && cellRaw < 1) {
+                            hour = Math.floor(cellRaw * 24);
+                            break;
+                        }
+                        // String HH:MM
+                        let tMatch = cellFmt.match(/^(\d{1,2}):(\d{2})/);
+                        if (tMatch) {
+                            hour = parseInt(tMatch[1], 10);
+                            break;
+                        }
+                    }
+                    if (hour === -1) hour = 0; // Padrão 00:00 se não achar nada
+                }
+                return { year, month, day, hour };
+            }
+            return null;
+        }
+
+        function buildYearTabs() {
+            const container = document.getElementById('yearTabs');
+            container.innerHTML = ''; 
+            availableYears.forEach(year => {
+                const btn = document.createElement('button');
+                btn.innerText = year;
+                btn.onclick = () => setYear(year);
+                btn.className = year === currentYear 
+                    ? "flex-1 sm:flex-none rounded-md bg-slate-800 px-6 py-2 text-sm font-bold text-white shadow-sm"
+                    : "flex-1 sm:flex-none rounded-md px-6 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-200";
+                container.appendChild(btn);
+            });
+        }
+
+        function setYear(year) {
+            currentYear = year;
+            buildYearTabs(); 
+            document.getElementById('monthFilter').value = 'ALL'; 
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const monthVal = document.getElementById('monthFilter').value;
+            
+            let subset = fullData.filter(d => d.year === currentYear);
+            if (monthVal !== "ALL") subset = subset.filter(d => d.month === monthVal);
+
+            // --- Cálculos de Semanas (Para as médias) ---
+            const activeDays = [...new Set(subset.map(x => x.dateStr))];
+            let numWeeks = 1;
+            
+            if (activeDays.length > 0) {
+                // Pega a janela total de dias corridos e converte pra semanas
+                let datesObj = activeDays.map(d => new Date(d));
+                let minDate = new Date(Math.min(...datesObj));
+                let maxDate = new Date(Math.max(...datesObj));
+                let diffDays = (maxDate - minDate) / (1000 * 60 * 60 * 24) + 1;
+                numWeeks = diffDays / 7;
+                if (numWeeks < 1) numWeeks = 1; // Evita inflar números se tiver só 2 dias carregados
+            }
+
+            // --- Agrupamentos ---
+            let hourlyCounts = Array(24).fill(0);
+            let weekDayCounts = Array(7).fill(0);
+
+            subset.forEach(d => {
+                hourlyCounts[d.hour]++;
+                weekDayCounts[d.weekDay]++;
+            });
+
+            // --- Médias ---
+            let hourlyAverages = hourlyCounts.map(c => (c / numWeeks).toFixed(1));
+            let weekDayAverages = weekDayCounts.map(c => (c / numWeeks).toFixed(1));
+
+            // --- KPIs ---
+            let maxHourlyVal = Math.max(...hourlyAverages);
+            let peakHourIdx = hourlyAverages.indexOf(maxHourlyVal.toFixed(1));
+            
+            let maxDailyVal = Math.max(...weekDayAverages);
+            let peakDayIdx = weekDayAverages.indexOf(maxDailyVal.toFixed(1));
+
+            document.getElementById('kpi-total').textContent = subset.length;
+            
+            if (subset.length > 0) {
+                const formatH = h => String(h).padStart(2, '0') + 'h';
+                document.getElementById('kpi-peak-hour').textContent = `${formatH(peakHourIdx)} às ${formatH((peakHourIdx+1)%24)}`;
+                document.getElementById('kpi-peak-avg').textContent = maxHourlyVal;
+                document.getElementById('kpi-peak-day').textContent = weekDaysNames[peakDayIdx];
+            } else {
+                document.getElementById('kpi-peak-hour').textContent = "-";
+                document.getElementById('kpi-peak-avg').textContent = "0";
+                document.getElementById('kpi-peak-day').textContent = "-";
+            }
+
+            // --- Update Gráficos ---
+            hourlyChart.data.labels = Array.from({length: 24}, (_, i) => `${String(i).padStart(2, '0')}:00`);
+            hourlyChart.data.datasets[0].data = hourlyAverages;
+            hourlyChart.update();
+
+            weeklyChart.data.datasets[0].data = weekDayAverages;
+            weeklyChart.update();
+        }
+
+        function initCharts() {
+            const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+            hourlyChart = new Chart(ctxHourly, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Média de Carretas',
+                        data: [],
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)', // Vermelho pra destacar pico
+                        borderRadius: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
+
+            const ctxWeekly = document.getElementById('weeklyChart').getContext('2d');
+            weeklyChart = new Chart(ctxWeekly, {
+                type: 'bar',
+                data: {
+                    labels: weekDaysNames,
+                    datasets: [{
+                        label: 'Média de Carretas',
+                        data: [],
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)', // Azul padrão
+                        borderRadius: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
