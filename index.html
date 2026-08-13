@@ -13,7 +13,6 @@
         body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .hidden { display: none !important; }
         
-        /* Custom Scrollbar para o dropdown */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -51,7 +50,6 @@
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col lg:flex-row justify-between gap-4 items-start lg:items-end">
                 
                 <div class="flex flex-col sm:flex-row items-start sm:items-end gap-4 w-full lg:w-auto">
-                    
                     <div class="relative w-full sm:w-64">
                         <span class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-1 block">Unidades:</span>
                         <button id="unitDropdownBtn" onclick="toggleUnitDropdown()" class="w-full bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:ring-blue-500 focus:border-blue-500 transition-colors">
@@ -60,8 +58,7 @@
                         </button>
                         
                         <div id="unitDropdownMenu" class="hidden absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            <ul id="unitList" class="p-2 space-y-1">
-                                </ul>
+                            <ul id="unitList" class="p-2 space-y-1"></ul>
                         </div>
                     </div>
 
@@ -114,13 +111,25 @@
                 </div>
             </div>
 
+            <!-- Botões de Download Inseridos Aqui -->
+            <div class="flex justify-end gap-3 mb-4">
+                <button onclick="exportDataToExcel()" class="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Baixar Tabela (Excel)
+                </button>
+                <button onclick="exportChartToPNG()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Baixar Gráfico em Hora (PNG)
+                </button>
+            </div>
+
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                     <div class="mb-4">
                         <h2 class="text-lg font-bold text-slate-800">Média de Chegadas por Hora</h2>
                         <p class="text-sm text-slate-500">Visão Semanal: Quantas chegam, em média, em cada horário</p>
                     </div>
-                    <div class="relative h-80"><canvas id="hourlyChart"></canvas></div>
+                    <div class="relative h-80 bg-white" id="chartContainer"><canvas id="hourlyChart"></canvas></div>
                 </div>
 
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
@@ -142,13 +151,15 @@
         let currentYear = "";
         let hourlyChart, weeklyChart;
         const weekDaysNames = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+        
+        // Novas variáveis globais para armazenar os dados ativos na tela e exportar
+        let currentHourlyAverages = [];
+        let currentWeekDayAverages = [];
 
-        // Função para mostrar/esconder o dropdown de unidades
         function toggleUnitDropdown() {
             document.getElementById('unitDropdownMenu').classList.toggle('hidden');
         }
 
-        // Fechar dropdown se clicar fora dele
         document.addEventListener('click', function(event) {
             const dropdown = document.getElementById('unitDropdownMenu');
             const btn = document.getElementById('unitDropdownBtn');
@@ -291,11 +302,10 @@
             return null;
         }
 
-        // Monta as checkboxes de unidades
         function buildUnitCheckboxes() {
             const unitList = document.getElementById('unitList');
             unitList.innerHTML = '';
-            selectedUnits = new Set(availableUnits); // Marca todas por padrão
+            selectedUnits = new Set(availableUnits); 
 
             availableUnits.forEach(u => {
                 const id = `chk-${u.replace(/\s+/g, '-')}`;
@@ -330,7 +340,7 @@
             } else if (selectedUnits.size === 0) {
                 btnText.textContent = "Nenhuma Unidade";
             } else if (selectedUnits.size === 1) {
-                btnText.textContent = [...selectedUnits][0]; // Mostra o nome se tiver só 1
+                btnText.textContent = [...selectedUnits][0]; 
             } else {
                 btnText.textContent = `${selectedUnits.size} Unidades Marcadas`;
             }
@@ -360,10 +370,8 @@
         function applyFilters() {
             const monthVal = document.getElementById('monthFilter').value;
             
-            // Filtros Combinados (Ano -> Unidades Marcadas -> Mês)
             let subset = fullData.filter(d => d.year === currentYear);
             
-            // Se nenhuma unidade estiver marcada, exibe 0
             if (selectedUnits.size === 0) {
                 subset = [];
             } else if (selectedUnits.size < availableUnits.length) {
@@ -396,6 +404,10 @@
 
             let hourlyAverages = hourlyCounts.map(c => (c / numWeeks).toFixed(1));
             let weekDayAverages = weekDayCounts.map(c => (c / numWeeks).toFixed(1));
+            
+            // Salva globalmente para permitir o download no Excel
+            currentHourlyAverages = hourlyAverages;
+            currentWeekDayAverages = weekDayAverages;
 
             let maxHourlyVal = Math.max(...hourlyAverages);
             let peakHourIdx = hourlyAverages.indexOf(maxHourlyVal.toFixed(1));
@@ -425,6 +437,19 @@
         }
 
         function initCharts() {
+            // Plugin para adicionar um fundo branco na hora de gerar a imagem do ChartJS
+            const customCanvasBackgroundColor = {
+                id: 'customCanvasBackgroundColor',
+                beforeDraw: (chart) => {
+                    const ctx = chart.canvas.getContext('2d');
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'destination-over';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, chart.width, chart.height);
+                    ctx.restore();
+                }
+            };
+
             const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
             hourlyChart = new Chart(ctxHourly, {
                 type: 'bar',
@@ -437,6 +462,7 @@
                         borderRadius: 4
                     }]
                 },
+                plugins: [customCanvasBackgroundColor],
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false, 
@@ -464,6 +490,59 @@
                     scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
                 }
             });
+        }
+
+        // --- NOVAS FUNÇÕES DE EXPORTAÇÃO ---
+
+        function exportDataToExcel() {
+            if (!currentHourlyAverages || currentHourlyAverages.length === 0) {
+                return alert("Não há dados filtrados para exportar.");
+            }
+
+            // Criação da Matriz de Dados da aba "Hora"
+            const wsHourlyData = [
+                ["Horário", "Média de Chegadas (Qtd)"]
+            ];
+            currentHourlyAverages.forEach((val, i) => {
+                wsHourlyData.push([`${String(i).padStart(2, '0')}:00`, parseFloat(val)]);
+            });
+
+            // Criação da Matriz de Dados da aba "Dia"
+            const wsWeeklyData = [
+                ["Dia da Semana", "Média de Chegadas (Qtd)"]
+            ];
+            currentWeekDayAverages.forEach((val, i) => {
+                wsWeeklyData.push([weekDaysNames[i], parseFloat(val)]);
+            });
+
+            // Geração das abas virtuais do SheetJS
+            const wsHourly = XLSX.utils.aoa_to_sheet(wsHourlyData);
+            const wsWeekly = XLSX.utils.aoa_to_sheet(wsWeeklyData);
+
+            // Criação e fechamento do Livro de Planilhas
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, wsHourly, "Media_Por_Hora");
+            XLSX.utils.book_append_sheet(wb, wsWeekly, "Media_Por_Dia");
+
+            // Força o Download
+            const monthText = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+            XLSX.writeFile(wb, `Analise_Chegadas_${currentYear}_${monthText.replace(" ", "_")}.xlsx`);
+        }
+
+        function exportChartToPNG() {
+            const canvas = document.getElementById('hourlyChart');
+            if (!canvas) return;
+
+            // Extrai a imagem do canvas do Chart.js
+            const imageUrl = canvas.toDataURL('image/png');
+            
+            // Cria um link temporário e dispara o download
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            
+            const monthText = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+            link.download = `Grafico_Chegadas_${currentYear}_${monthText.replace(" ", "_")}.png`;
+            link.click();
         }
     </script>
 </body>
