@@ -25,7 +25,7 @@
         <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                 <h1 class="text-3xl font-bold text-slate-900">Logística | Picos e Horários</h1>
-                <p class="text-slate-500 mt-1">Descubra os horários de maior gargalo e a média semanal de chegadas</p>
+                <p class="text-slate-500 mt-1">Descubra os horários de maior gargalo e a média de chegadas</p>
             </div>
             
             <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center">
@@ -42,7 +42,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <h3 class="mt-2 text-sm font-semibold text-slate-900">Aguardando a Planilha</h3>
-            <p class="mt-1 text-sm text-slate-500">Selecione seu arquivo Excel ou CSV para calcular as médias semanais de horário.</p>
+            <p class="mt-1 text-sm text-slate-500">Selecione seu arquivo Excel ou CSV para calcular as médias de horário.</p>
         </div>
 
         <div id="mainDashboard" class="hidden">
@@ -111,7 +111,7 @@
                 </div>
             </div>
 
-            <!-- Botões de Download Inseridos Aqui -->
+            <!-- Botões de Download -->
             <div class="flex justify-end gap-3 mb-4">
                 <button onclick="exportDataToExcel()" class="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-700 transition">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -123,11 +123,11 @@
                 </button>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                     <div class="mb-4">
                         <h2 class="text-lg font-bold text-slate-800">Média de Chegadas por Hora</h2>
-                        <p class="text-sm text-slate-500">Visão Semanal: Quantas chegam, em média, em cada horário</p>
+                        <p class="text-sm text-slate-500">Visão Semanal: Quantas chegam, em média, em cada horário na semana</p>
                     </div>
                     <div class="relative h-80 bg-white" id="chartContainer"><canvas id="hourlyChart"></canvas></div>
                 </div>
@@ -140,6 +140,22 @@
                     <div class="relative h-80"><canvas id="weeklyChart"></canvas></div>
                 </div>
             </div>
+
+            <!-- NOVO GRÁFICO DIÁRIO -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-8">
+                <div class="mb-4 flex flex-col sm:flex-row justify-between sm:items-end gap-2">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Média de Chegadas por Hora (Visão Diária - Seg a Sex)</h2>
+                        <p class="text-sm text-slate-500">Visão Diária: Quantas chegam em cada horário em um dia útil típico</p>
+                    </div>
+                    <button onclick="exportWeekdayChartToPNG()" class="text-sm text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Baixar PNG deste Gráfico
+                    </button>
+                </div>
+                <div class="relative h-80 bg-white"><canvas id="weekdayHourlyChart"></canvas></div>
+            </div>
+
         </div>
     </div>
 
@@ -149,12 +165,12 @@
         let availableUnits = [];
         let selectedUnits = new Set();
         let currentYear = "";
-        let hourlyChart, weeklyChart;
+        let hourlyChart, weeklyChart, weekdayHourlyChart;
         const weekDaysNames = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
         
-        // Novas variáveis globais para armazenar os dados ativos na tela e exportar
         let currentHourlyAverages = [];
         let currentWeekDayAverages = [];
+        let currentWeekdayHourlyAverages = []; // Variável para o novo gráfico
 
         function toggleUnitDropdown() {
             document.getElementById('unitDropdownMenu').classList.toggle('hidden');
@@ -396,18 +412,29 @@
 
             let hourlyCounts = Array(24).fill(0);
             let weekDayCounts = Array(7).fill(0);
+            let weekdayHourlyCounts = Array(24).fill(0); // Para visão diária apenas dias úteis
 
             subset.forEach(d => {
                 hourlyCounts[d.hour]++;
                 weekDayCounts[d.weekDay]++;
+                
+                // Filtra para contar horários apenas de segunda a sexta (1 = Seg ... 5 = Sex)
+                if (d.weekDay >= 1 && d.weekDay <= 5) {
+                    weekdayHourlyCounts[d.hour]++;
+                }
             });
 
+            // Visão Semanal Original (divisão pelas semanas)
             let hourlyAverages = hourlyCounts.map(c => (c / numWeeks).toFixed(1));
             let weekDayAverages = weekDayCounts.map(c => (c / numWeeks).toFixed(1));
             
-            // Salva globalmente para permitir o download no Excel
+            // Visão Diária (Dias Úteis): divisao pelo total de dias úteis no período
+            let numWeekdays = numWeeks * 5; 
+            let weekdayHourlyAverages = weekdayHourlyCounts.map(c => (c / numWeekdays).toFixed(1));
+            
             currentHourlyAverages = hourlyAverages;
             currentWeekDayAverages = weekDayAverages;
+            currentWeekdayHourlyAverages = weekdayHourlyAverages;
 
             let maxHourlyVal = Math.max(...hourlyAverages);
             let peakHourIdx = hourlyAverages.indexOf(maxHourlyVal.toFixed(1));
@@ -428,16 +455,22 @@
                 document.getElementById('kpi-peak-day').textContent = "-";
             }
 
-            hourlyChart.data.labels = Array.from({length: 24}, (_, i) => `${String(i).padStart(2, '0')}:00`);
+            let hoursLabels = Array.from({length: 24}, (_, i) => `${String(i).padStart(2, '0')}:00`);
+            
+            // Atualizando Gráficos
+            hourlyChart.data.labels = hoursLabels;
             hourlyChart.data.datasets[0].data = hourlyAverages;
             hourlyChart.update();
 
             weeklyChart.data.datasets[0].data = weekDayAverages;
             weeklyChart.update();
+            
+            weekdayHourlyChart.data.labels = hoursLabels;
+            weekdayHourlyChart.data.datasets[0].data = weekdayHourlyAverages;
+            weekdayHourlyChart.update();
         }
 
         function initCharts() {
-            // Plugin para adicionar um fundo branco na hora de gerar a imagem do ChartJS
             const customCanvasBackgroundColor = {
                 id: 'customCanvasBackgroundColor',
                 beforeDraw: (chart) => {
@@ -450,15 +483,16 @@
                 }
             };
 
+            // Gráfico 1: Por Hora (Visão Semanal)
             const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
             hourlyChart = new Chart(ctxHourly, {
                 type: 'bar',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Média de Carretas',
+                        label: 'Média de Carretas (Semanal)',
                         data: [],
-                        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)', // red-500
                         borderRadius: 4
                     }]
                 },
@@ -466,11 +500,12 @@
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false, 
-                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.raw} carretas (média)` } } },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.raw} carretas (média na semana)` } } },
                     scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
                 }
             });
 
+            // Gráfico 2: Por Dia (Semanal)
             const ctxWeekly = document.getElementById('weeklyChart').getContext('2d');
             weeklyChart = new Chart(ctxWeekly, {
                 type: 'bar',
@@ -479,7 +514,7 @@
                     datasets: [{
                         label: 'Média de Carretas',
                         data: [],
-                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)', // blue-500
                         borderRadius: 4
                     }]
                 },
@@ -490,41 +525,58 @@
                     scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
                 }
             });
+            
+            // Gráfico 3: Por Hora (Visão Diária, apenas Dias Úteis)
+            const ctxWeekdayHourly = document.getElementById('weekdayHourlyChart').getContext('2d');
+            weekdayHourlyChart = new Chart(ctxWeekdayHourly, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Média de Carretas (Dia Útil)',
+                        data: [],
+                        backgroundColor: 'rgba(139, 92, 246, 0.8)', // violet-500
+                        borderRadius: 4
+                    }]
+                },
+                plugins: [customCanvasBackgroundColor],
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.raw} carretas (média num dia útil)` } } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
         }
 
-        // --- NOVAS FUNÇÕES DE EXPORTAÇÃO ---
+        // --- FUNÇÕES DE EXPORTAÇÃO ---
 
         function exportDataToExcel() {
             if (!currentHourlyAverages || currentHourlyAverages.length === 0) {
                 return alert("Não há dados filtrados para exportar.");
             }
 
-            // Criação da Matriz de Dados da aba "Hora"
-            const wsHourlyData = [
-                ["Horário", "Média de Chegadas (Qtd)"]
-            ];
-            currentHourlyAverages.forEach((val, i) => {
-                wsHourlyData.push([`${String(i).padStart(2, '0')}:00`, parseFloat(val)]);
-            });
+            // Aba 1
+            const wsHourlyData = [["Horário", "Média de Chegadas (Semana)"]];
+            currentHourlyAverages.forEach((val, i) => wsHourlyData.push([`${String(i).padStart(2, '0')}:00`, parseFloat(val)]));
 
-            // Criação da Matriz de Dados da aba "Dia"
-            const wsWeeklyData = [
-                ["Dia da Semana", "Média de Chegadas (Qtd)"]
-            ];
-            currentWeekDayAverages.forEach((val, i) => {
-                wsWeeklyData.push([weekDaysNames[i], parseFloat(val)]);
-            });
+            // Aba 2
+            const wsWeeklyData = [["Dia da Semana", "Média de Chegadas (Qtd)"]];
+            currentWeekDayAverages.forEach((val, i) => wsWeeklyData.push([weekDaysNames[i], parseFloat(val)]));
+            
+            // Aba 3 (Nova Aba: Visão Diária em Dias Úteis)
+            const wsWeekdayHourlyData = [["Horário", "Média de Chegadas (Num dia útil)"]];
+            currentWeekdayHourlyAverages.forEach((val, i) => wsWeekdayHourlyData.push([`${String(i).padStart(2, '0')}:00`, parseFloat(val)]));
 
-            // Geração das abas virtuais do SheetJS
             const wsHourly = XLSX.utils.aoa_to_sheet(wsHourlyData);
             const wsWeekly = XLSX.utils.aoa_to_sheet(wsWeeklyData);
+            const wsWeekdayHourly = XLSX.utils.aoa_to_sheet(wsWeekdayHourlyData);
 
-            // Criação e fechamento do Livro de Planilhas
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, wsHourly, "Media_Por_Hora");
+            XLSX.utils.book_append_sheet(wb, wsHourly, "Media_Por_Hora_Semanal");
             XLSX.utils.book_append_sheet(wb, wsWeekly, "Media_Por_Dia");
+            XLSX.utils.book_append_sheet(wb, wsWeekdayHourly, "Media_Diaria_Seg_a_Sex");
 
-            // Força o Download
             const monthText = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
             XLSX.writeFile(wb, `Analise_Chegadas_${currentYear}_${monthText.replace(" ", "_")}.xlsx`);
         }
@@ -532,16 +584,24 @@
         function exportChartToPNG() {
             const canvas = document.getElementById('hourlyChart');
             if (!canvas) return;
-
-            // Extrai a imagem do canvas do Chart.js
             const imageUrl = canvas.toDataURL('image/png');
-            
-            // Cria um link temporário e dispara o download
             const link = document.createElement('a');
             link.href = imageUrl;
             
             const monthText = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
             link.download = `Grafico_Chegadas_${currentYear}_${monthText.replace(" ", "_")}.png`;
+            link.click();
+        }
+        
+        function exportWeekdayChartToPNG() {
+            const canvas = document.getElementById('weekdayHourlyChart');
+            if (!canvas) return;
+            const imageUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            
+            const monthText = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+            link.download = `Grafico_Chegadas_Diarias_${currentYear}_${monthText.replace(" ", "_")}.png`;
             link.click();
         }
     </script>
